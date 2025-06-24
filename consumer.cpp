@@ -14,15 +14,30 @@ extern int tx_sleep_ms;
 extern int rev9_sleep_ms;
 
 void* consumer(void* arg) {
-    ConsumerType ctype = static_cast<ConsumerType>(reinterpret_cast<intptr_t>(arg));
-    int sleep_time = (ctype == TX) ? tx_sleep_ms : rev9_sleep_ms;
+    intptr_t raw_value = reinterpret_cast<intptr_t>(arg);
+    ConsumerType ctype = static_cast<ConsumerType>(raw_value);    
+
+    int sleep_time = 0;
+    if (ctype == TX){
+        sleep_time = tx_sleep_ms;
+    }
+    else {
+        sleep_time = rev9_sleep_ms;
+    }
 
     while (true) {
         pthread_mutex_lock(&requestQueue.mutex);
 
+        // Wait if queue is empty and consuming isn't finished
+        bool queue_is_empty = requestQueue.queue.empty();
+        bool more_requests_expected = (requestQueue.totalConsumed < totalRequests);
+
         // Wait for available requests or until all are consumed
-        while (requestQueue.queue.empty() && requestQueue.totalConsumed < totalRequests) {
+        while (queue_is_empty && more_requests_expected) {
             pthread_cond_wait(&requestQueue.not_empty, &requestQueue.mutex);
+
+            queue_is_empty = requestQueue.queue.empty();
+            more_requests_expected = (requestQueue.totalConsumed < totalRequests);
         }
 
         // Exit if no requests remain and everything has been handled

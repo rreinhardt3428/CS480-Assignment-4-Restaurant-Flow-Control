@@ -10,8 +10,16 @@ extern int vip_sleep_ms;          // Set via -v flag
 extern int general_sleep_ms;      // Set via -g flag
 
 void* producer(void* arg) {
-    RequestType type = static_cast<RequestType>(reinterpret_cast<intptr_t>(arg));
-    int sleep_time = (type == VIPRoom) ? vip_sleep_ms : general_sleep_ms;
+    intptr_t raw_value = reinterpret_cast<intptr_t>(arg);
+    RequestType type = static_cast<RequestType>(raw_value);
+
+    int sleep_time = 0;
+    if (type == VIPRoom){
+        sleep_time = vip_sleep_ms;
+    }
+    else{
+        sleep_time = general_sleep_ms;
+    }
 
     while (true) {
         if (sleep_time > 0) {
@@ -25,16 +33,21 @@ void* producer(void* arg) {
             break;
         }
 
+        bool queue_full = requestQueue.is_full(type);
+        bool vip_full = (type == VIPRoom && requestQueue.inQueue[VIPRoom] >= 5);
+
         // Wait if the queue is full or VIP constraint is hit
-        while (requestQueue.is_full(type) ||
-               (type == VIPRoom && requestQueue.inQueue[VIPRoom] >= 5)) {
+        while (queue_full || vip_full) {
             pthread_cond_wait(&requestQueue.not_full, &requestQueue.mutex);
 
             if (requestQueue.totalProduced >= totalRequests) {
                 pthread_mutex_unlock(&requestQueue.mutex);
                 return nullptr;
             }
-               }
+
+            queue_full = requestQueue.is_full(type);
+            vip_full = (type == VIPRoom && requestQueue.inQueue[VIPRoom] >= 5);
+        }
 
         requestQueue.queue.push(type);
         requestQueue.inQueue[type]++;
