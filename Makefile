@@ -1,17 +1,17 @@
-# Roger Reinhardt
-# 826470808
-#
-#
-
+# Ethan Kent CS480
+# REDID: 826843661
 # Makefile
+
+#.RECIPEPREFIX +=
 
 # Specify compiler
 CC = g++
+# Compiler flags, if you want debug info, add -g
 CCFLAGS = -std=c++11 -g3 -Wall -c
 CFLAGS = -g3 -c
 
 # Object files
-OBJS = main.o producer.o consumer.o shared_queue.o log.o
+OBJS = producer.o queue.o consumer.o main.o log.o
 
 # Program name
 PROGRAM = dineseating
@@ -23,14 +23,21 @@ $(PROGRAM) : $(OBJS)
 main.o : main.cpp
 	$(CC) $(CCFLAGS) main.cpp
 
-producer.o : producer.cpp producer.h shared_queue.h seating.h
+producer.o : producer.cpp producer.h
 	$(CC) $(CCFLAGS) producer.cpp
 
-consumer.o : consumer.cpp consumer.h shared_queue.h seating.h
+queue.o : queue.cpp queue.h
+	$(CC) $(CCFLAGS) queue.cpp
+
+consumer.o : consumer.cpp consumer.h
 	$(CC) $(CCFLAGS) consumer.cpp
 
 log.o : log.cpp log.h
-	$(CC) $(CFLAGS) log.cpp
+	$(CC) $(CCFLAGS) log.cpp
 
+# Once things work, people frequently delete their object files.
+# If you use "make clean", this will do it for you.
+# As we use gnuemacs which leaves auto save files termintating
+# with ~, we will delete those as well.
 clean :
 	rm -rf $(OBJS) *~ $(PROGRAM)

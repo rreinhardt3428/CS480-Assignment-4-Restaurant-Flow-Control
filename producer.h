@@ -1,9 +1,9 @@
-// Roger Reinhardt
-// 826470808
-//
-//
-
 #ifndef PRODUCER_H
 #define PRODUCER_H
 
-#endif
+#include <pthread.h>
+
+// Thread function for producer robots (GeneralTable and VIPRoom)
+void* producer(void* arg);
+
+#endif // PRODUCER_H
