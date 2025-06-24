@@ -17,7 +17,7 @@ void* producer(void* arg) {
     if (type == VIPRoom){
         sleep_time = vip_sleep_ms;
     }
-    else{
+    else if (type == GeneralTable){
         sleep_time = general_sleep_ms;
     }
 

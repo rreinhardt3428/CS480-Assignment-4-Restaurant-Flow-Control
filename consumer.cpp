@@ -21,7 +21,7 @@ void* consumer(void* arg) {
     if (ctype == TX){
         sleep_time = tx_sleep_ms;
     }
-    else {
+    else if (ctype == Rev9){
         sleep_time = rev9_sleep_ms;
     }
 
