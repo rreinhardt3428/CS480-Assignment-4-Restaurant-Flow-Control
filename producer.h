@@ -3,7 +3,6 @@
 
 #include <pthread.h>
 
-// Thread function for producer robots (GeneralTable and VIPRoom)
-void* producer(void* arg);
+void* producer(void* arg); // thread function for producer robots, those being generaltable and viproom
 
 #endif // PRODUCER_H
