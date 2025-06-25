@@ -8,85 +8,71 @@
 #include "queue.h"
 #include "log.h"
 
-// External thread functions
+// outside thread functions for use
 extern void* producer(void*);
 extern void* consumer(void*);
 
-// Shared simulation parameters
-int totalRequests = 120;
-int tx_sleep_ms = 0;
-int rev9_sleep_ms = 0;
-int general_sleep_ms = 0;
-int vip_sleep_ms = 0;
+// simulation parameters
+int totalRequests = 120; // requests to produce
+int txSleepTime = 0; // sleep time for TX consumer
+int rev9SleepTime = 0; // sleep time for rev9 consumer
+int generalSleepTime = 0; // sleep time for general producer
+int vipSleepTime = 0; // sleep time for vip producer
 
-sem_t barrier;
+sem_t barrier; // barrier semaphore for blocking the main thread until a simulation is done
 
-// Parse optional CLI arguments: -s -x -r -g -v
-void parse_args(int argc, char* argv[]) {
+void handleArgs(int argc, char* argv[]) { // handling command line arguments given using getopt
     int opt;
     while ((opt = getopt(argc, argv, "s:x:r:g:v:")) != -1) {
         switch (opt) {
             case 's':
-                totalRequests = std::atoi(optarg);
+                totalRequests = std::atoi(optarg); // number of requests
                 break;
             case 'x':
-                tx_sleep_ms = std::atoi(optarg);
+                txSleepTime = std::atoi(optarg); // TX consumer
                 break;
             case 'r':
-                rev9_sleep_ms = std::atoi(optarg);
+                rev9SleepTime = std::atoi(optarg); // REV9 consumer
                 break;
             case 'g':
-                general_sleep_ms = std::atoi(optarg);
+                generalSleepTime = std::atoi(optarg); // general producer
                 break;
             case 'v':
-                vip_sleep_ms = std::atoi(optarg);
+                vipSleepTime = std::atoi(optarg); // vip producer
                 break;
             default:
-                std::cerr << "Usage: " << argv[0]
-                          << " [-s total_requests] [-x tx_ms] [-r rev9_ms] "
-                             "[-g general_ms] [-v vip_ms]\n";
+                std::cerr << "Incorrect format. Use -s, -x, -r, -g, -v flags.";
                 std::exit(EXIT_FAILURE);
         }
     }
 }
 
-
 int main(int argc, char* argv[]) {
-    parse_args(argc, argv);
+    handleArgs(argc, argv); // getting command line argument to override the default vals
 
-    sem_init(&barrier, 0, 0);
+    sem_init(&barrier, 0, 0); // initializing the barrier semaphore in order to block the thread when needed
 
-    pthread_t producers[RequestTypeN];
-    pthread_t consumers[ConsumerTypeN];
+    pthread_t producerThreads[RequestTypeN];
+    pthread_t consumerThreads[ConsumerTypeN];
 
-    // Required launch order: General producer, VIP producer
-    pthread_create(&producers[GeneralTable], nullptr, producer,
-                   reinterpret_cast<void*>(GeneralTable));
+    pthread_create(&producerThreads[GeneralTable], nullptr, producer, reinterpret_cast<void*>(GeneralTable));// launching producer threads starting with the generaltable first, then the viproom
+    pthread_create(&producerThreads[VIPRoom], nullptr, producer, reinterpret_cast<void*>(VIPRoom));
 
-    pthread_create(&producers[VIPRoom], nullptr, producer,
-                   reinterpret_cast<void*>(VIPRoom));
 
-    // Then: TX consumer, Rev-9 consumer
-    pthread_create(&consumers[TX], nullptr, consumer,
-                   reinterpret_cast<void*>(TX));
+    pthread_create(&consumerThreads[TX], nullptr, consumer, reinterpret_cast<void*>(TX)); // launching the TX and REV9 consumer threads after
+    pthread_create(&consumerThreads[Rev9], nullptr, consumer, reinterpret_cast<void*>(Rev9));
 
-    pthread_create(&consumers[Rev9], nullptr, consumer,
-                   reinterpret_cast<void*>(Rev9));
+    sem_wait(&barrier); // waiting until the last request is consumed and if the barrier is posted
 
-    // Main thread waits for the last consumer to signal barrier
-    sem_wait(&barrier);
 
-    // Join threads (spec-compliant clean-up)
     for (int i = 0; i < ConsumerTypeN; ++i){
-        pthread_join(consumers[i], nullptr);
+        pthread_join(consumerThreads[i], nullptr); // joining the consumer threads for termination
     }
-
     for (int i = 0; i < RequestTypeN; ++i){
-        pthread_join(producers[i], nullptr);
+        pthread_join(producerThreads[i], nullptr); // joining the producer threads for termination
     }
 
-    // Output summary statistics
-    unsigned int* consumedPtrs[ConsumerTypeN] = {
+    unsigned int* consumedPtrs[ConsumerTypeN] = { // summary statistics when all the threads have completed
         requestQueue.consumed[TX],
         requestQueue.consumed[Rev9]
     };
