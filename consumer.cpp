@@ -7,64 +7,61 @@
 #include "log.h"
 #include "seating.h"
 
+// variables to be used and shared across the threads
 extern RequestQueue requestQueue;
-extern int totalRequests; // Set via -s argument or default
-extern sem_t barrier;     // Used to release the main thread
-extern int tx_sleep_ms;
-extern int rev9_sleep_ms;
+extern int totalRequests;
+extern sem_t barrier;
+extern int txSleepTime;
+extern int rev9SleepTime;
 
-void* consumer(void* arg) {
-    intptr_t raw_value = reinterpret_cast<intptr_t>(arg);
-    ConsumerType ctype = static_cast<ConsumerType>(raw_value);    
-
-    int sleep_time = 0;
-    if (ctype == TX){
-        sleep_time = tx_sleep_ms;
-    }
-    else if (ctype == Rev9){
-        sleep_time = rev9_sleep_ms;
+void* consumer(void* arg) { // function for consumer thread; input is either TX or REV9 and returns a nullptr on completion
+    intptr_t rawValue = reinterpret_cast<intptr_t>(arg); // converting the arg into a consumer role for later use
+    ConsumerType consumerType = static_cast<ConsumerType>(rawValue);
+    // calculating how long the consumer should wait between processing the requests
+    int sleepTime = 0;
+    if (consumerType == TX) {
+        sleepTime = txSleepTime;
+    } else if (consumerType == Rev9) {
+        sleepTime = rev9SleepTime;
     }
 
     while (true) {
-        pthread_mutex_lock(&requestQueue.mutex);
+        pthread_mutex_lock(&requestQueue.mutex); // locking the shared request queue before checking/modifying the state
 
-        // Wait if queue is empty and consuming isn't finished
-        bool queue_is_empty = requestQueue.queue.empty();
-        bool more_requests_expected = (requestQueue.totalConsumed < totalRequests);
+        bool queueIsEmpty = requestQueue.queue.empty(); // checking if the queue is empty and if more requests are coming
+        bool moreRequestsExpected = (requestQueue.totalConsumed < totalRequests);
 
-        // Wait for available requests or until all are consumed
-        while (queue_is_empty && more_requests_expected) {
-            pthread_cond_wait(&requestQueue.not_empty, &requestQueue.mutex);
 
-            queue_is_empty = requestQueue.queue.empty();
-            more_requests_expected = (requestQueue.totalConsumed < totalRequests);
+        while (queueIsEmpty && moreRequestsExpected) {
+            pthread_cond_wait(&requestQueue.requestAvailable, &requestQueue.mutex); // waiting for the new requests to arrive if the queue is empty and there is still come requests to be consumed
+
+            // queue conditions after the wait
+            queueIsEmpty = requestQueue.queue.empty();
+            moreRequestsExpected = (requestQueue.totalConsumed < totalRequests);
         }
 
-        // Exit if no requests remain and everything has been handled
-        if (requestQueue.queue.empty() && requestQueue.totalConsumed >= totalRequests) {
+        if (requestQueue.queue.empty() && requestQueue.totalConsumed >= totalRequests) { // exiting if there are no remiaining requests and everything is done being handled
             pthread_mutex_unlock(&requestQueue.mutex);
             return nullptr;
         }
 
-        // Consume the next request
-        RequestType req = requestQueue.queue.front();
+        RequestType request = requestQueue.queue.front(); // getting the next requests from the front of the queue
         requestQueue.queue.pop();
-        requestQueue.inQueue[req]--;
-        requestQueue.consumed[ctype][req]++;
+        requestQueue.inQueue[request]--; // updating the queue state and consumer statistics
+        requestQueue.consumed[consumerType][request]++;
         requestQueue.totalConsumed++;
 
-        output_request_removed(ctype, req, requestQueue.consumed[ctype], requestQueue.inQueue);
+        output_request_removed(consumerType, request, requestQueue.consumed[consumerType], requestQueue.inQueue); // necessary logging
 
-        // Signal barrier if this was the final request
-        if (requestQueue.totalConsumed >= totalRequests && requestQueue.queue.empty()) {
+        if (requestQueue.totalConsumed >= totalRequests && requestQueue.queue.empty()) { // notifier that it was the last request
             sem_post(&barrier);
         }
 
-        pthread_cond_signal(&requestQueue.not_full);
-        pthread_mutex_unlock(&requestQueue.mutex);
+        pthread_cond_signal(&requestQueue.spaceAvailable); // notifier for waiting producers that there is now space in the queue
+        pthread_mutex_unlock(&requestQueue.mutex); // releasing the mutex in order for other threads to safely access the queue
 
-        if (sleep_time > 0) {
-            usleep(sleep_time * 1000); // Convert milliseconds to microseconds
+        if (sleepTime > 0) { // processing time in MS
+            usleep(sleepTime * 1000);
         }
     }
 }
