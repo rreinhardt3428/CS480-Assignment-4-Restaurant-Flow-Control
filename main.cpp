@@ -1,3 +1,8 @@
+// Ethan Kent CS480
+// REDID: 826843661
+// Roger Reinhardt
+// REDID: 826470808
+
 #include <pthread.h>
 #include <iostream>
 #include <cstdlib>
@@ -8,20 +13,22 @@
 #include "queue.h"
 #include "log.h"
 
+const int DEFAULT_REQUESTS = 120;
+
 // outside thread functions for use
 extern void* producer(void*);
 extern void* consumer(void*);
 
 // simulation parameters
-int totalRequests = 120; // requests to produce
+int totalRequests = DEFAULT_REQUESTS; // requests to produce
 int txSleepTime = 0; // sleep time for TX consumer
 int rev9SleepTime = 0; // sleep time for rev9 consumer
 int generalSleepTime = 0; // sleep time for general producer
 int vipSleepTime = 0; // sleep time for vip producer
 
-sem_t barrier; // barrier semaphore for blocking the main thread until a simulation is done
+sem_t barrier; // Barrier semaphore for blocking the main thread until a simulation is done
 
-void handleArgs(int argc, char* argv[]) { // handling command line arguments given using getopt
+void handleArgs(int argc, char* argv[]) { // Handle command line arguments given using getopt
     int opt;
     while ((opt = getopt(argc, argv, "s:x:r:g:v:")) != -1) {
         switch (opt) {
@@ -47,22 +54,23 @@ void handleArgs(int argc, char* argv[]) { // handling command line arguments giv
     }
 }
 
-int main(int argc, char* argv[]) { // main for creating and handling necessary threads
-    handleArgs(argc, argv); // getting command line argument to override the default vals
+int main(int argc, char* argv[]) { // Main for creating and handling necessary threads
+    handleArgs(argc, argv); // Initialize parameters from command line inputs
 
-    sem_init(&barrier, 0, 0); // initializing the barrier semaphore in order to block the thread when needed
+    sem_init(&barrier, 0, 0); // Initialize barrier semaphore in order to block the thread when needed
 
     pthread_t producerThreads[RequestTypeN];
     pthread_t consumerThreads[ConsumerTypeN];
 
-    pthread_create(&producerThreads[GeneralTable], nullptr, producer, reinterpret_cast<void*>(GeneralTable));// launching producer threads starting with the generaltable first, then the viproom
+    // launch producer threads starting with the General table, then the VIP Room
+    pthread_create(&producerThreads[GeneralTable], nullptr, producer, reinterpret_cast<void*>(GeneralTable)); 
     pthread_create(&producerThreads[VIPRoom], nullptr, producer, reinterpret_cast<void*>(VIPRoom));
 
-
-    pthread_create(&consumerThreads[TX], nullptr, consumer, reinterpret_cast<void*>(TX)); // launching the TX and REV9 consumer threads after
+    // launch the TX and REV9 consumer threads after producer threads
+    pthread_create(&consumerThreads[TX], nullptr, consumer, reinterpret_cast<void*>(TX)); 
     pthread_create(&consumerThreads[Rev9], nullptr, consumer, reinterpret_cast<void*>(Rev9));
 
-    sem_wait(&barrier); // waiting until the last request is consumed and if the barrier is posted
+    sem_wait(&barrier); // Block main thread until all requests have been consumed
 
 
     for (int i = 0; i < ConsumerTypeN; ++i){
@@ -72,12 +80,12 @@ int main(int argc, char* argv[]) { // main for creating and handling necessary t
         pthread_join(producerThreads[i], nullptr); // joining the producer threads for termination
     }
 
-    unsigned int* consumedPtrs[ConsumerTypeN] = { // summary statistics when all the threads have completed
+    unsigned int* consumedPtrs[ConsumerTypeN] = { // Output summary statistics once all the threads have completed
         requestQueue.consumed[TX],
         requestQueue.consumed[Rev9]
     };
     output_production_history(requestQueue.produced, consumedPtrs);
 
-    sem_destroy(&barrier);
+    sem_destroy(&barrier); // Clean up barrier semaphore once all threads have completed
     return 0;
 }

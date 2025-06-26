@@ -1,3 +1,8 @@
+// Ethan Kent CS480
+// REDID: 826843661
+// Roger Reinhardt
+// REDID: 826470808
+
 #include <unistd.h>
 #include <iostream>
 #include <semaphore.h>
@@ -6,6 +11,8 @@
 #include "queue.h"
 #include "log.h"
 #include "seating.h"
+
+const int MICROSECONDS = 1000; // Converts milliseconds to microseconds for usleep
 
 // variables to be used and shared across the threads
 extern RequestQueue requestQueue;
@@ -26,42 +33,41 @@ void* consumer(void* arg) { // function for consumer thread; input is either TX 
     }
 
     while (true) {
-        pthread_mutex_lock(&requestQueue.mutex); // locking the shared request queue before checking/modifying the state
+        pthread_mutex_lock(&requestQueue.mutex); // Begin monitor using mutex lock for access shared buffer
 
-        bool queueIsEmpty = requestQueue.queue.empty(); // checking if the queue is empty and if more requests are coming
+        bool queueIsEmpty = requestQueue.queue.empty(); // Check if bounded buffer is empty and if more requests are coming
         bool moreRequestsExpected = (requestQueue.totalConsumed < totalRequests);
 
 
-        while (queueIsEmpty && moreRequestsExpected) {
-            pthread_cond_wait(&requestQueue.requestAvailable, &requestQueue.mutex); // waiting for the new requests to arrive if the queue is empty and there is still come requests to be consumed
+        while (queueIsEmpty && moreRequestsExpected) { // Waiting for new requests if the queue is empty and requests are available for consumption
+            pthread_cond_wait(&requestQueue.requestAvailable, &requestQueue.mutex); 
 
-            // queue conditions after the wait
-            queueIsEmpty = requestQueue.queue.empty();
+            queueIsEmpty = requestQueue.queue.empty(); // Check conditions after waking up
             moreRequestsExpected = (requestQueue.totalConsumed < totalRequests);
         }
 
-        if (requestQueue.queue.empty() && requestQueue.totalConsumed >= totalRequests) { // exiting if there are no remiaining requests and everything is done being handled
-            pthread_mutex_unlock(&requestQueue.mutex);
+        if (requestQueue.queue.empty() && requestQueue.totalConsumed >= totalRequests) { // Check if all requests have been consumed
+            pthread_mutex_unlock(&requestQueue.mutex); // Release monitor lock 
             return nullptr;
         }
 
         RequestType request = requestQueue.queue.front(); // getting the next requests from the front of the queue
         requestQueue.queue.pop();
-        requestQueue.inQueue[request]--; // updating the queue state and consumer statistics
+        requestQueue.inQueue[request]--; // updating buffer state and consumer statistics
         requestQueue.consumed[consumerType][request]++;
         requestQueue.totalConsumed++;
 
         output_request_removed(consumerType, request, requestQueue.consumed[consumerType], requestQueue.inQueue); // necessary logging
 
-        if (requestQueue.totalConsumed >= totalRequests && requestQueue.queue.empty()) { // notifier that it was the last request
-            sem_post(&barrier);
+        if (requestQueue.totalConsumed >= totalRequests && requestQueue.queue.empty()) { // Notifier that it was the last request
+            sem_post(&barrier); // Signals barrier to unlock the main thread
         }
 
-        pthread_cond_signal(&requestQueue.spaceAvailable); // notifier for waiting producers that there is now space in the queue
-        pthread_mutex_unlock(&requestQueue.mutex); // releasing the mutex in order for other threads to safely access the queue
+        pthread_cond_signal(&requestQueue.spaceAvailable); // Signals that space is in the queue for producers
+        pthread_mutex_unlock(&requestQueue.mutex); // Release monitor lock so other threads can access buffer
 
-        if (sleepTime > 0) { // processing time in MS
-            usleep(sleepTime * 1000);
+        if (sleepTime > 0) { // Simulate processing time to prevent blocking shared access to buffer
+            usleep(sleepTime * MICROSECONDS);
         }
     }
 }
