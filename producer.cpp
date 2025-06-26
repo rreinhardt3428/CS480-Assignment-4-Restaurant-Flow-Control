@@ -1,50 +1,74 @@
+// Ethan Kent CS480
+// REDID: 826843661
+// Roger Reinhardt
+// REDID: 826470808
+
 #include <unistd.h>
 #include <iostream>
 #include "queue.h"
 #include "log.h"
 #include "seating.h"
+#include "sharedData.h"
 
-extern RequestQueue requestQueue;
-extern int totalRequests;         // Set via -s flag or default (120)
-extern int vip_sleep_ms;          // Set via -v flag
-extern int general_sleep_ms;      // Set via -g flag
+const int VIP_LIMIT = 5; // max number of VIP requests allowed in queue at a time
+const int MICROSECONDS = 1000; // used to convert milliseconds to microseconds for usleep
 
-void* producer(void* arg) {
-    RequestType type = static_cast<RequestType>(reinterpret_cast<intptr_t>(arg));
-    int sleep_time = (type == VIPRoom) ? vip_sleep_ms : general_sleep_ms;
+void* producer(void* arg) { // function for producer thread, input is either generaltable or viproom and returns nullptr on completion
+    ProducerArgs* args = static_cast<ProducerArgs*>(arg);
 
-    while (true) {
-        if (sleep_time > 0) {
-            usleep(sleep_time * 1000); // Sleep outside critical section
+    RequestQueue* requestQueue = args->requestQueue;
+    int totalRequests = args->totalRequests;
+    int vipSleepTime = args->vipSleepTime;
+    int generalSleepTime = args->generalSleepTime;
+    RequestType producerType = args->role;
+
+    int sleepTime = 0; // calculating how long the producer needs to pause inbetween productions
+    if (producerType == VIPRoom) {
+        sleepTime = vipSleepTime;
+    }
+    if (producerType == GeneralTable) {
+        sleepTime = generalSleepTime;
+    }
+
+    while (true) { // loop for generating requests until the production is met
+        if (sleepTime > 0) {
+            usleep(sleepTime * MICROSECONDS); // sleep outside critical section
         }
 
-        pthread_mutex_lock(&requestQueue.mutex);
+        pthread_mutex_lock(&requestQueue->mutex); // begin the monitor using mutex lock for the access shared buffer
 
-        if (requestQueue.totalProduced >= totalRequests) {
-            pthread_mutex_unlock(&requestQueue.mutex);
+        if (requestQueue->totalProduced >= totalRequests) { // checking if the production limit has been reached
+            pthread_mutex_unlock(&requestQueue->mutex); // releasing the monitor lock
             break;
         }
 
-        // Wait if the queue is full or VIP constraint is hit
-        while (requestQueue.is_full(type) ||
-               (type == VIPRoom && requestQueue.inQueue[VIPRoom] >= 5)) {
-            pthread_cond_wait(&requestQueue.not_full, &requestQueue.mutex);
+        bool queueFull = requestQueue->isFull(producerType); // checking if the buffer is full and doesn't have room for more
+        bool vipFull = (producerType == VIPRoom && requestQueue->inQueue[VIPRoom] >= VIP_LIMIT); // checking if the vip room exceeds the limit of 5 concurrent entries
 
-            if (requestQueue.totalProduced >= totalRequests) {
-                pthread_mutex_unlock(&requestQueue.mutex);
+
+        while (queueFull || vipFull) { // waiting for the spaceAvailable condition until there is more space
+            pthread_cond_wait(&requestQueue->spaceAvailable, &requestQueue->mutex);
+
+            if (requestQueue->totalProduced >= totalRequests) { // checking production limit after waking up
+                pthread_mutex_unlock(&requestQueue->mutex); // releasing the monitor lock
                 return nullptr;
             }
-               }
 
-        requestQueue.queue.push(type);
-        requestQueue.inQueue[type]++;
-        requestQueue.produced[type]++;
-        requestQueue.totalProduced++;
+            queueFull = requestQueue->isFull(producerType); // computing the new condition after any changes
+            vipFull = (producerType == VIPRoom && requestQueue->inQueue[VIPRoom] >= VIP_LIMIT);
+        }
 
-        output_request_added(type, requestQueue.produced, requestQueue.inQueue);
+        requestQueue->queue.push(producerType); // adding the new requests to the queue and updating the production state
+        pthread_cond_signal(&requestQueue->requestAvailable); // signaling the other side to make sure there are no threads asleep
 
-        pthread_cond_signal(&requestQueue.not_empty);
-        pthread_mutex_unlock(&requestQueue.mutex);
+        requestQueue->inQueue[producerType]++;
+        requestQueue->produced[producerType]++;
+        requestQueue->totalProduced++;
+
+        output_request_added(producerType, requestQueue->produced, requestQueue->inQueue); // logging the new request
+
+        //pthread_cond_signal(&requestQueue->requestAvailable); // signalling that a request is available for a waiting consumer
+        pthread_mutex_unlock(&requestQueue->mutex); // releasing the monitor lock on the queue so that other threads can access it
     }
 
     return nullptr;

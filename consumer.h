@@ -1,9 +1,11 @@
+// Ethan Kent CS480
+// REDID: 826843661
+// Roger Reinhardt
+// REDID: 826470808
+
 #ifndef CONSUMER_H
 #define CONSUMER_H
 
-#include <pthread.h>
-
-// Thread function for consumer robots (T-X and Rev-9)
-void* consumer(void* arg);
+void* consumer(void* arg); // thread function for the consumer robots, those being TX and REV9
 
 #endif // CONSUMER_H
