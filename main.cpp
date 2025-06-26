@@ -18,25 +18,25 @@
 
 const int DEFAULT_REQUESTS = 120;
 
-// Parses command line arguments, filling the parameters by reference
-void handleArgs(int argc, char* argv[], int& totalRequests, int& txSleepTime, int& rev9SleepTime, int& generalSleepTime, int& vipSleepTime) {
+// handling command line arguments given using getopt
+void handleArgs(int argc, char* argv[], int& totalRequests, int& txSleepTime, int& rev9SleepTime, int& generalSleepTime, int& vipSleepTime) { 
     int opt;
     while ((opt = getopt(argc, argv, "s:x:r:g:v:")) != -1) {
         switch (opt) {
             case 's':
-                totalRequests = std::atoi(optarg); // total requests to produce
+                totalRequests = std::atoi(optarg); // number of requests
                 break;
             case 'x':
-                txSleepTime = std::atoi(optarg); // sleep time for TX consumer
+                txSleepTime = std::atoi(optarg); // TX consumer
                 break;
             case 'r':
-                rev9SleepTime = std::atoi(optarg); // sleep time for Rev9 consumer
+                rev9SleepTime = std::atoi(optarg); // REV9 consumer
                 break;
             case 'g':
-                generalSleepTime = std::atoi(optarg); // sleep time for general producer
+                generalSleepTime = std::atoi(optarg); // general producer
                 break;
             case 'v':
-                vipSleepTime = std::atoi(optarg); // sleep time for VIP producer
+                vipSleepTime = std::atoi(optarg); // vip producer
                 break;
             default:
                 std::cerr << "Incorrect format. Use -s, -x, -r, -g, -v flags.\n";
@@ -45,81 +45,70 @@ void handleArgs(int argc, char* argv[], int& totalRequests, int& txSleepTime, in
     }
 }
 
-int main(int argc, char* argv[]) {
-    // Initialize the shared request queue object
-    RequestQueue requestQueue;
-    requestQueue.barrierPosted = false; // Initialize barrier flag to false
+int main(int argc, char* argv[]) { // main for creating and handling necessary threads
+    RequestQueue requestQueue;     // Initialize shared request queue object
+    requestQueue.barrierPosted = false; // preinitializing
 
-    // Initialize counters in the queue to zero to avoid garbage values
+    // Set all counters in request queue to 0 
     for (int i = 0; i < RequestTypeN; i++) {
-        requestQueue.produced[i] = 0;  // Total produced for each request type
-        requestQueue.inQueue[i] = 0;   // Current requests in queue for each type
+        requestQueue.produced[i] = 0;
+        requestQueue.inQueue[i] = 0;
         for (int j = 0; j < ConsumerTypeN; j++) {
-            requestQueue.consumed[j][i] = 0; // Total consumed by each consumer for each request type
+            requestQueue.consumed[j][i] = 0;
         }
     }
     requestQueue.totalProduced = 0; // Overall number of requests produced
     requestQueue.totalConsumed = 0; // Overall number of requests consumed
 
-    // Initialize the mutex and condition variables used in the queue monitor
+    // Initialize mutex and condition variables used in queue monitor
     pthread_mutex_init(&requestQueue.mutex, nullptr);
     pthread_cond_init(&requestQueue.spaceAvailable, nullptr);
     pthread_cond_init(&requestQueue.requestAvailable, nullptr);
 
-    // Initialize simulation parameters with defaults
-    int totalRequests = DEFAULT_REQUESTS;
-    int txSleepTime = 0;
-    int rev9SleepTime = 0;
-    int generalSleepTime = 0;
-    int vipSleepTime = 0;
+    // simulation parameters
+    int totalRequests = DEFAULT_REQUESTS; // requests to produce
+    int txSleepTime = 0; // sleep time for TX consumer
+    int rev9SleepTime = 0; // sleep time for rev9 consumer
+    int generalSleepTime = 0; // sleep time for general producer
+    int vipSleepTime = 0; // sleep time for vip producer
 
-    // Parse command line arguments to overwrite defaults if specified
+    // intializing the parameters from command line inputs
     handleArgs(argc, argv, totalRequests, txSleepTime, rev9SleepTime, generalSleepTime, vipSleepTime);
 
-    // Initialize a semaphore to act as a barrier to block main thread until consumption is complete
     sem_t barrier;
-    sem_init(&barrier, 0, 0);
+    sem_init(&barrier, 0, 0); // initializing the barrier semaphore in order to block the thread when needed
 
-    // Prepare argument structs to pass all necessary shared data to producer and consumer threads
-    ProducerArgs producerArgsGeneral {&requestQueue, totalRequests, vipSleepTime, generalSleepTime, GeneralTable};
-    ProducerArgs producerArgsVIP {&requestQueue, totalRequests, vipSleepTime, generalSleepTime, VIPRoom};
-
-    ConsumerArgs consumerArgsTX {&requestQueue, totalRequests, &barrier, txSleepTime, rev9SleepTime, TX};
-    ConsumerArgs consumerArgsRev9 {&requestQueue, totalRequests, &barrier, txSleepTime, rev9SleepTime, Rev9};
-    
-    // Declare arrays to hold thread IDs for producers and consumers
     pthread_t producerThreads[RequestTypeN];
     pthread_t consumerThreads[ConsumerTypeN];
 
-    // Create producer threads for General Table and VIP Room requests, passing their respective argument structs
-    pthread_create(&producerThreads[GeneralTable], nullptr, producer, &producerArgsGeneral);
-    pthread_create(&producerThreads[VIPRoom], nullptr, producer, &producerArgsVIP);
+    // launch producer threads starting with the General table, then the VIP Room   
+    ProducerArgs generalArg {&requestQueue, totalRequests, vipSleepTime, generalSleepTime, GeneralTable};
+    pthread_create(&producerThreads[GeneralTable], nullptr, producer, &generalArg);
+    ProducerArgs vipArg {&requestQueue, totalRequests, vipSleepTime, generalSleepTime, VIPRoom};
+    pthread_create(&producerThreads[VIPRoom], nullptr, producer, &vipArg);
 
-    // Create consumer threads for TX and Rev9, passing their respective argument structs
-    pthread_create(&consumerThreads[TX], nullptr, consumer, &consumerArgsTX);
-    pthread_create(&consumerThreads[Rev9], nullptr, consumer, &consumerArgsRev9);
+    // launch the TX and REV9 consumer threads after producer threads
+    ConsumerArgs txArg {&requestQueue, totalRequests, &barrier, txSleepTime, rev9SleepTime, TX};
+    pthread_create(&consumerThreads[TX], nullptr, consumer, &txArg);
+    ConsumerArgs rev9Arg {&requestQueue, totalRequests, &barrier, txSleepTime, rev9SleepTime, Rev9};
+    pthread_create(&consumerThreads[Rev9], nullptr, consumer, &rev9Arg);
 
-    // Wait on the semaphore barrier until all requests have been consumed, blocking main thread here
-    sem_wait(&barrier);
+    sem_wait(&barrier); // blocking the main thread until all requests have been consumed
 
-    // Join all consumer threads (wait for them to finish)
     for (int i = 0; i < ConsumerTypeN; ++i) {
-        pthread_join(consumerThreads[i], nullptr);
+        pthread_join(consumerThreads[i], nullptr); // joining the consumer threads for termination
     }
-    // Join all producer threads (wait for them to finish)
     for (int i = 0; i < RequestTypeN; ++i) {
-        pthread_join(producerThreads[i], nullptr);
+        pthread_join(producerThreads[i], nullptr); // joining the producer threads for termination
     }
 
-    // Prepare pointers to each consumer's consumed array for final output
-    unsigned int* consumedPtrs[ConsumerTypeN] = {
+    unsigned int* consumedPtrs[ConsumerTypeN] = { // outputting the summary statistics when all the threads have finished
         requestQueue.consumed[TX],
         requestQueue.consumed[Rev9]
     };
-    // Output summary of production and consumption statistics
     output_production_history(requestQueue.produced, consumedPtrs);
 
-    // Clean up mutex, condition variables, and semaphore resources
+    // Clean up mutex, condition variables, and semaphore barrier once all threads are complete
     pthread_mutex_destroy(&requestQueue.mutex);
     pthread_cond_destroy(&requestQueue.spaceAvailable);
     pthread_cond_destroy(&requestQueue.requestAvailable);

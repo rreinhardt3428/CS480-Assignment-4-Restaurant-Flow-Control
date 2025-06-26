@@ -1,4 +1,3 @@
-
 // Ethan Kent CS480
 // REDID: 826843661
 // Roger Reinhardt

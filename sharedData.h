@@ -1,4 +1,8 @@
-// shareddata.h
+// Ethan Kent CS480
+// REDID: 826843661
+// Roger Reinhardt
+// REDID: 826470808
+
 #ifndef SHAREDDATA_H
 #define SHAREDDATA_H
 
@@ -8,20 +12,20 @@
 // Holds all shared data the producers need
 struct ProducerArgs {
     RequestQueue* requestQueue; // pointer to shared request queue
-    int totalRequests;          // total number of requests to produce
-    int vipSleepTime;           // VIP producer sleep time (ms)
-    int generalSleepTime;       // General producer sleep time (ms)
-    RequestType role;
+    int totalRequests; // total number of requests to produce
+    int vipSleepTime; // Sleep times for each producer type in ms
+    int generalSleepTime; 
+    RequestType role; // Determine whether producer handles VIP Room or General Table 
 };
 
 // Holds all shared data the consumers need
 struct ConsumerArgs {
     RequestQueue* requestQueue; // pointer to shared request queue
-    int totalRequests;          // total number of requests to consume
-    sem_t* barrier;             // pointer to barrier semaphore
-    int txSleepTime;            // T-X consumer sleep time (ms)
-    int rev9SleepTime;          // Rev-9 consumer sleep time (ms)
-    ConsumerType role;
+    int totalRequests; // total number of requests to consume
+    sem_t* barrier; // pointer to barrier semaphore
+    int txSleepTime; // Sleep times for each consumer type in ms
+    int rev9SleepTime; 
+    ConsumerType role; // Determines whether Consumer is T-X or Rev-9
 };
 
 #endif

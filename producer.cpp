@@ -14,8 +14,9 @@ const int VIP_LIMIT = 5; // max number of VIP requests allowed in queue at a tim
 const int MICROSECONDS = 1000; // used to convert milliseconds to microseconds for usleep
 
 void* producer(void* arg) { // function for producer thread, input is either generaltable or viproom and returns nullptr on completion
-    ProducerArgs* args = static_cast<ProducerArgs*>(arg);
+    ProducerArgs* args = static_cast<ProducerArgs*>(arg); // Initialize pointer to ProducerArgs struct
 
+    // Populate local variables with values and shared data from args
     RequestQueue* requestQueue = args->requestQueue;
     int totalRequests = args->totalRequests;
     int vipSleepTime = args->vipSleepTime;

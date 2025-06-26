@@ -1,4 +1,3 @@
-
 // Ethan Kent CS480
 // REDID: 826843661
 // Roger Reinhardt
@@ -17,8 +16,9 @@
 const int MICROSECONDS = 1000; // converts milliseconds to microseconds for usleep
 
 void* consumer(void* arg) { // function for consumer thread; input is either TX or REV9 and returns a nullptr on completion
-    ConsumerArgs* args = static_cast<ConsumerArgs*>(arg);
+    ConsumerArgs* args = static_cast<ConsumerArgs*>(arg); // Initialize pointer to ConsumerArgs struct  
 
+    // Populate local variables with values and shared data from args
     ConsumerType consumerType = args->role;
     RequestQueue* requestQueue = args->requestQueue;
     int totalRequests = args->totalRequests;
